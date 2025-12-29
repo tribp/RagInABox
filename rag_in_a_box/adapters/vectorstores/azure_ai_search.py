@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import urlparse
 
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient
@@ -25,6 +26,13 @@ VECTOR_PROFILE = "raginabox-vector-profile"
 HNSW_CONFIG = "raginabox-hnsw"
 
 
+def _safe_domain(uri: str) -> str:
+    try:
+        return (urlparse(uri).netloc or "").lower()
+    except Exception:
+        return ""
+
+
 @dataclass
 class AzureAISearchVectorStore:
     endpoint: str
@@ -38,13 +46,34 @@ class AzureAISearchVectorStore:
         self._search_client = SearchClient(self.endpoint, self.index_name, cred)
 
     def ensure_index(self) -> None:
-        # Vector index creation pattern matches Azure vector search quickstart :contentReference[oaicite:6]{index=6}
         fields = [
+            # Core
             SimpleField(name="id", type=SearchFieldDataType.String, key=True),
             SimpleField(name="document_id", type=SearchFieldDataType.String, filterable=True),
             SimpleField(name="uri", type=SearchFieldDataType.String, filterable=True),
+            SimpleField(name="referrer_url", type=SearchFieldDataType.String, filterable=True),
             SimpleField(name="chunk_index", type=SearchFieldDataType.Int32, filterable=True),
+
+            # Added metadata for filtering / portal exploration
+            SimpleField(name="source_type", type=SearchFieldDataType.String, filterable=True, facetable=True),
+            SimpleField(name="mime_type", type=SearchFieldDataType.String, filterable=True, facetable=True),
+            SimpleField(name="domain", type=SearchFieldDataType.String, filterable=True, facetable=True),
+            SimpleField(
+                name="ingested_at",
+                type=SearchFieldDataType.DateTimeOffset,
+                filterable=True,
+                sortable=True,
+            ),
+            SimpleField(name="content_hash", type=SearchFieldDataType.String, filterable=True),
+
+            # Citation traceability (optional, but handy)
+            SimpleField(name="chunk_start_char", type=SearchFieldDataType.Int32, filterable=True),
+
+            # Text for keyword search
+            SearchableField(name="title", type=SearchFieldDataType.String),
             SearchableField(name="content", type=SearchFieldDataType.String),
+
+            # Vector field
             SearchField(
                 name="content_vector",
                 type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
@@ -68,24 +97,62 @@ class AzureAISearchVectorStore:
 
         docs = []
         for i, (c, v) in enumerate(zip(chunks, vectors)):
+            md = c.metadata or {}
+
+            # Best-effort defaults (won’t break if metadata missing)
+            source_type = md.get("source_type", "")
+            mime_type = md.get("mime_type", "")
+            title = md.get("title", "")
+            ingested_at = md.get("ingested_at")  # should be ISO string or datetime; we'll set later in pipeline
+            content_hash = md.get("content_hash", "")
+            chunk_start_char = md.get("start_char")
+
+            # Derive domain if not provided
+            domain = md.get("domain") or _safe_domain(c.uri)
+
             docs.append(
                 {
                     "id": c.id,
                     "document_id": c.document_id,
                     "uri": c.uri,
-                    "chunk_index": c.metadata.get("chunk_index", i),
+                    "referrer_url": md.get("referrer_url", ""),
+                    "chunk_index": md.get("chunk_index", i),
+
+                    "source_type": source_type,
+                    "mime_type": mime_type,
+                    "domain": domain,
+                    "title": title,
+                    "ingested_at": ingested_at,
+                    "content_hash": content_hash,
+                    "chunk_start_char": chunk_start_char,
+
                     "content": c.text,
                     "content_vector": v,
                 }
             )
+
         self._search_client.upload_documents(documents=docs)
 
     def query(self, query_vector: list[float], k: int, filters: Optional[dict] = None) -> list[SearchResult]:
-        # Vector query pattern matches quickstart: VectorizedQuery + vector_queries=[...] :contentReference[oaicite:7]{index=7}
         vq = VectorizedQuery(vector=query_vector, k_nearest_neighbors=k, fields="content_vector", kind="vector")
+
         results = self._search_client.search(
             vector_queries=[vq],
-            select=["id", "document_id", "uri", "chunk_index", "content"],
+            select=[
+                "id",
+                "document_id",
+                "uri",
+                "referrer_url",
+                "chunk_index",
+                "title",
+                "source_type",
+                "mime_type",
+                "domain",
+                "ingested_at",
+                "content_hash",
+                "chunk_start_char",
+                "content",
+            ],
             top=k,
         )
 
@@ -96,7 +163,18 @@ class AzureAISearchVectorStore:
                 document_id=r["document_id"],
                 uri=r["uri"],
                 text=r["content"],
-                metadata={"chunk_index": r.get("chunk_index")},
+                metadata={
+                    "chunk_index": r.get("chunk_index"),
+                     "referrer_url": r.get("referrer_url"),
+                    "title": r.get("title"),
+                    "source_type": r.get("source_type"),
+                    "mime_type": r.get("mime_type"),
+                    "domain": r.get("domain"),
+                    "ingested_at": r.get("ingested_at"),
+                    "content_hash": r.get("content_hash"),
+                    "start_char": r.get("chunk_start_char"),
+                },
             )
             out.append(SearchResult(chunk=chunk, score=r.get("@search.score", 0.0)))
+
         return out

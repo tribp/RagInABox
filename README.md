@@ -1033,3 +1033,30 @@ WEB_RESPECT_ROBOTS=false
 ```bash
 uv run python -m rag_in_a_box.cli ingest-web
 ```
+
+# Appendix
+## Queries in Azure AI Search
+
+```json
+    "search": "*",
+    "filter": "source_type eq 'web'",
+    "select": "uri, source_type, mime_type, referer_url, title",
+    "top": 50
+```
+
+```json
+{
+  "search": "*",
+  "filter": "uri eq 'https://www.fluvius.be/sites/fluvius/files/2022-04/aansluitgids-elektriciteit-hoogspanning-injectie_0.pdf'",
+  "select": "id,uri,source_type,mime_type,referrer_url,ingested_at,chunk_index",
+  "top": 50
+}
+```
+```json
+{
+  "search": "*",
+  "filter": "uri eq 'https://www.fluvius.be/nl/publicatie/fluvius_aansluitgids_elektriciteit_hoogspanning_injectie'",
+  "select": "id,uri,source_type,mime_type,referrer_url,ingested_at,chunk_index",
+  "top": 50
+}
+```
