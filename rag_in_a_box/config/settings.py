@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     azure_openai_api_version: str = Field(..., alias="AZURE_OPENAI_API_VERSION")
     azure_openai_chat_deployment: str = Field(..., alias="AZURE_OPENAI_CHAT_DEPLOYMENT")
     azure_openai_embedding_deployment: str = Field(..., alias="AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
+    embedding_requests_per_minute: int | None = Field(
+        None, alias="EMBEDDING_REQUESTS_PER_MINUTE"
+    )
+    embedding_max_concurrency: int = Field(5, alias="EMBEDDING_MAX_CONCURRENCY")
 
     # -------------------
     # Azure AI Search
@@ -74,6 +78,22 @@ class Settings(BaseSettings):
     def _parse_exclude_prefixes(cls, v):
         # normalize by stripping whitespace and trailing slash
         return [p.rstrip("/") for p in _parse_csv_list(v)]
+
+    @field_validator("embedding_max_concurrency")
+    @classmethod
+    def _positive_concurrency(cls, v):
+        if v <= 0:
+            raise ValueError("EMBEDDING_MAX_CONCURRENCY must be greater than 0")
+        return v
+
+    @field_validator("embedding_requests_per_minute")
+    @classmethod
+    def _non_negative_rpm(cls, v):
+        if v is None:
+            return None
+        if v <= 0:
+            raise ValueError("EMBEDDING_REQUESTS_PER_MINUTE must be positive when set")
+        return v
 
     # -------------------
     # Chunking + retrieval

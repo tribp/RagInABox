@@ -36,6 +36,8 @@ def cmd_ingest_local(args) -> None:
         endpoint=s.azure_openai_endpoint,
         api_key=s.azure_openai_api_key,
         deployment=s.azure_openai_embedding_deployment,
+        requests_per_minute=s.embedding_requests_per_minute,
+        max_concurrency=s.embedding_max_concurrency,
     )
 
     vector_dim = embedder.embedding_dim()
@@ -80,6 +82,8 @@ def cmd_ingest_web(args) -> None:
         endpoint=s.azure_openai_endpoint,
         api_key=s.azure_openai_api_key,
         deployment=s.azure_openai_embedding_deployment,
+        requests_per_minute=s.embedding_requests_per_minute,
+        max_concurrency=s.embedding_max_concurrency,
     )
 
     vector_dim = embedder.embedding_dim()
