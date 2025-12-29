@@ -58,6 +58,7 @@ class AzureAISearchVectorStore:
             SimpleField(name="referrer_url", type=SearchFieldDataType.String, filterable=True),
             SimpleField(name="chunk_index", type=SearchFieldDataType.Int32, filterable=True),
             SimpleField(name="chunk_start_char", type=SearchFieldDataType.Int32, filterable=True),
+            SimpleField(name="tokens", type=SearchFieldDataType.Int32, filterable=True),
             SimpleField(name="referrer_url", type=SearchFieldDataType.String, filterable=True),
             SimpleField(name="source_type", type=SearchFieldDataType.String, filterable=True),
             SimpleField(name="mime_type", type=SearchFieldDataType.String, filterable=True),
@@ -114,6 +115,7 @@ class AzureAISearchVectorStore:
                     "title": metadata.get("title"),
                     "content": c.text,
                     "content_vector": v,
+                    "tokens": metadata.get("tokens"),
                 }
             )
 
@@ -124,6 +126,7 @@ class AzureAISearchVectorStore:
 
         results = self._search_client.search(
             vector_queries=[vq],
+<<<<<<< HEAD
             select=[
                 "id",
                 "document_id",
@@ -139,6 +142,9 @@ class AzureAISearchVectorStore:
                 "chunk_start_char",
                 "content",
             ],
+=======
+            select=["id", "document_id", "uri", "chunk_index", "content", "tokens"],
+>>>>>>> 6bb913a (Add token metadata and index support)
             top=k,
         )
 
@@ -151,6 +157,7 @@ class AzureAISearchVectorStore:
                 text=r["content"],
                 metadata={
                     "chunk_index": r.get("chunk_index"),
+<<<<<<< HEAD
                      "referrer_url": r.get("referrer_url"),
                     "title": r.get("title"),
                     "source_type": r.get("source_type"),
@@ -159,6 +166,9 @@ class AzureAISearchVectorStore:
                     "ingested_at": r.get("ingested_at"),
                     "content_hash": r.get("content_hash"),
                     "start_char": r.get("chunk_start_char"),
+=======
+                    "tokens": r.get("tokens"),
+>>>>>>> 6bb913a (Add token metadata and index support)
                 },
             )
             out.append(SearchResult(chunk=chunk, score=r.get("@search.score", 0.0)))
