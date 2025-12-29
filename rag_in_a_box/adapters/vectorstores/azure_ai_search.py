@@ -28,6 +28,13 @@ VECTOR_PROFILE = "raginabox-vector-profile"
 HNSW_CONFIG = "raginabox-hnsw"
 
 
+def _safe_domain(uri: str) -> str:
+    try:
+        return (urlparse(uri).netloc or "").lower()
+    except Exception:
+        return ""
+
+
 @dataclass
 class AzureAISearchVectorStore:
     endpoint: str
@@ -44,9 +51,11 @@ class AzureAISearchVectorStore:
         """Create the Azure AI Search index if it does not already exist."""
         # Vector index creation pattern matches Azure vector search quickstart :contentReference[oaicite:6]{index=6}
         fields = [
+            # Core
             SimpleField(name="id", type=SearchFieldDataType.String, key=True),
             SimpleField(name="document_id", type=SearchFieldDataType.String, filterable=True),
             SimpleField(name="uri", type=SearchFieldDataType.String, filterable=True),
+            SimpleField(name="referrer_url", type=SearchFieldDataType.String, filterable=True),
             SimpleField(name="chunk_index", type=SearchFieldDataType.Int32, filterable=True),
             SimpleField(name="chunk_start_char", type=SearchFieldDataType.Int32, filterable=True),
             SimpleField(name="tokens", type=SearchFieldDataType.Int32, filterable=True),
@@ -58,6 +67,8 @@ class AzureAISearchVectorStore:
             SimpleField(name="ingested_at", type=SearchFieldDataType.DateTimeOffset, filterable=True),
             SearchableField(name="title", type=SearchFieldDataType.String),
             SearchableField(name="content", type=SearchFieldDataType.String),
+
+            # Vector field
             SearchField(
                 name="content_vector",
                 type=SearchFieldDataType.Collection(SearchFieldDataType.Single),
@@ -107,6 +118,7 @@ class AzureAISearchVectorStore:
                     "tokens": metadata.get("tokens"),
                 }
             )
+
         self._search_client.upload_documents(documents=docs)
 
     def query(self, query_vector: list[float], k: int, filters: Optional[dict] = None) -> list[SearchResult]:
@@ -172,7 +184,16 @@ class AzureAISearchVectorStore:
                     "mime_type": r.get("mime_type"),
                     "domain": r.get("domain"),
                     "title": r.get("title"),
+                     "referrer_url": r.get("referrer_url"),
+                    "title": r.get("title"),
+                    "source_type": r.get("source_type"),
+                    "mime_type": r.get("mime_type"),
+                    "domain": r.get("domain"),
+                    "ingested_at": r.get("ingested_at"),
+                    "content_hash": r.get("content_hash"),
+                    "start_char": r.get("chunk_start_char"),
                 },
             )
             out.append(SearchResult(chunk=chunk, score=r.get("@search.score", 0.0)))
+
         return out

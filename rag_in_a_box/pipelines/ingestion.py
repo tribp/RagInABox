@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import hashlib
 
-from rag_in_a_box.core.interfaces import Chunker, Embedder, VectorStore
+from rag_in_a_box.core.interfaces import Chunker, ContentSource, Embedder, VectorStore
 from rag_in_a_box.core.models import Chunk
 from rag_in_a_box.adapters.extractors.registry import ExtractorRegistry
-from rag_in_a_box.core.interfaces import ContentSource
 
 
 @dataclass
@@ -25,7 +26,7 @@ class IngestionPipeline:
         chunker: Chunker,
         embedder: Embedder,
         vectorstore: VectorStore,
-        batch_size: int = 64,
+        batch_size: int = 16,
     ):
         self.source = source
         self.extractor_registry = extractor_registry
@@ -36,10 +37,12 @@ class IngestionPipeline:
 
     def run(self) -> IngestionStats:
         stats = IngestionStats()
-
         pending_chunks: list[Chunk] = []
 
-        def flush():
+        # One timestamp for the whole ingestion run (UTC)
+        run_ingested_at = datetime.now(timezone.utc).isoformat()
+
+        def flush() -> None:
             nonlocal pending_chunks, stats
             if not pending_chunks:
                 return
@@ -53,16 +56,32 @@ class IngestionPipeline:
 
             try:
                 doc = self.extractor_registry.extract(item)
-            except Exception as e:
+            except Exception:
                 # keep going; later we’ll add logging
                 continue
 
             stats.docs_extracted += 1
 
             chunks = self.chunker.chunk(doc)
-            stats.chunks_created += len(chunks)
 
-            pending_chunks.extend(chunks)
+            # Enrich chunk metadata (Chunk is frozen, so create new objects)
+            enriched: list[Chunk] = []
+            for c in chunks:
+                md = dict(c.metadata or {})
+                md["ingested_at"] = run_ingested_at
+                md["content_hash"] = hashlib.sha256(c.text.encode("utf-8")).hexdigest()
+                enriched.append(
+                    Chunk(
+                        id=c.id,
+                        document_id=c.document_id,
+                        uri=c.uri,
+                        text=c.text,
+                        metadata=md,
+                    )
+                )
+
+            stats.chunks_created += len(enriched)
+            pending_chunks.extend(enriched)
 
             if len(pending_chunks) >= self.batch_size:
                 flush()
