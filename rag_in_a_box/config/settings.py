@@ -1,16 +1,23 @@
 from __future__ import annotations
 
+from typing import Iterable
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-def _parse_csv_list(v) -> list[str]:
-    """Accept comma-separated strings (from .env) or lists."""
-    if v is None or v == "":
+
+def _parse_csv_list(raw: Iterable[str] | str | None) -> list[str]:
+    """Accept comma-separated strings (from .env) or list-like values."""
+
+    if raw is None or raw == "":
         return []
-    if isinstance(v, str):
-        return [x.strip() for x in v.split(",") if x.strip()]
-    # Assume it's already an iterable/list-like
-    return [str(x).strip() for x in v if str(x).strip()]
+
+    if isinstance(raw, str):
+        values = raw.split(",")
+    else:
+        values = list(raw)
+
+    return [str(val).strip() for val in values if str(val).strip()]
 
 
 class Settings(BaseSettings):
@@ -69,15 +76,14 @@ class Settings(BaseSettings):
     crawl_timeout_seconds: int = Field(20, alias="CRAWL_TIMEOUT_SECONDS")
     crawl_user_agent: str = Field("RagInABoxBot/0.1", alias="CRAWL_USER_AGENT")
     crawl_include_pdfs: bool = Field(True, alias="CRAWL_INCLUDE_PDFS")
-    
     # Exclude URLs by prefix (comma-separated in .env), e.g. https://www.fluvius.be/fr
     crawl_exclude_prefixes: list[str] = Field(default_factory=list, alias="CRAWL_EXCLUDE_PREFIXES")
 
     @field_validator("crawl_exclude_prefixes", mode="before")
     @classmethod
-    def _parse_exclude_prefixes(cls, v):
-        # normalize by stripping whitespace and trailing slash
-        return [p.rstrip("/") for p in _parse_csv_list(v)]
+    def _parse_exclude_prefixes(cls, value):
+        # Normalize by stripping whitespace and trailing slash
+        return [prefix.rstrip("/") for prefix in _parse_csv_list(value)]
 
     @field_validator("embedding_max_concurrency")
     @classmethod
@@ -101,17 +107,6 @@ class Settings(BaseSettings):
     chunk_size: int = Field(800, alias="CHUNK_SIZE")
     chunk_overlap: int = Field(120, alias="CHUNK_OVERLAP")
     top_k: int = Field(5, alias="TOP_K")
-    
-    crawl_exclude_prefixes: list[str] = Field(default_factory=list, alias="CRAWL_EXCLUDE_PREFIXES")
-
-    @field_validator("crawl_exclude_prefixes", mode="before")
-    @classmethod
-    def _parse_exclude_prefixes(cls, v):
-        if v is None or v == "":
-            return []
-        if isinstance(v, str):
-            return [x.strip().rstrip("/") for x in v.split(",") if x.strip()]
-        return [str(x).rstrip("/") for x in v]
     
 if __name__ == "__main__":
     s = Settings()
