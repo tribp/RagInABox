@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from datetime import datetime, timezone
 from typing import Optional
-from urllib.parse import urlparse
 from urllib.parse import urlparse
 
 from azure.core.credentials import AzureKeyCredential
