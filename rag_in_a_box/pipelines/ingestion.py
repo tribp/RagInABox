@@ -26,7 +26,7 @@ class IngestionPipeline:
         chunker: Chunker,
         embedder: Embedder,
         vectorstore: VectorStore,
-        batch_size: int = 64,
+        batch_size: int = 16,
     ):
         self.source = source
         self.extractor_registry = extractor_registry
