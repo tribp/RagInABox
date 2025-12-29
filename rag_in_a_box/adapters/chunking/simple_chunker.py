@@ -40,6 +40,8 @@ class SimpleCharChunker:
                         **doc.metadata,
                         "chunk_index": chunk_index,
                         "start_char": i,
+                        "chunk_start_char": i,
+                        "mime_type": doc.mime_type,
                     },
                 )
             )

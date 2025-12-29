@@ -38,9 +38,14 @@ class DoclingChunker:
                     f"{base_metadata.get('paragraph_id')}:{chunk_index}:{start}",
                 )
             )
-            metadata = {**doc.metadata, **base_metadata, "chunk_index": chunk_index}
-            if start:
-                metadata["start_char"] = start
+            metadata = {
+                **doc.metadata,
+                **base_metadata,
+                "chunk_index": chunk_index,
+                "mime_type": doc.mime_type,
+                "start_char": start,
+                "chunk_start_char": start,
+            }
 
             chunks.append(
                 Chunk(

@@ -80,10 +80,11 @@ class AzureAISearchVectorStore:
         docs = []
         for i, (c, v) in enumerate(zip(chunks, vectors)):
             metadata = c.metadata or {}
-            start_char = metadata.get("chunk_start_char", metadata.get("start_char"))
+            start_char = metadata.get("chunk_start_char", metadata.get("start_char", 0))
             source_type = metadata.get("source_type", metadata.get("source"))
             domain = urlparse(c.uri).netloc.lower() if c.uri else None
             content_hash = hashlib.sha256(c.text.encode("utf-8")).hexdigest()
+            referrer = metadata.get("referrer_url") or metadata.get("referrer")
 
             docs.append(
                 {
@@ -92,7 +93,7 @@ class AzureAISearchVectorStore:
                     "uri": c.uri,
                     "chunk_index": metadata.get("chunk_index", i),
                     "chunk_start_char": start_char,
-                    "referrer_url": metadata.get("referrer_url"),
+                    "referrer_url": referrer,
                     "source_type": source_type,
                     "mime_type": metadata.get("mime_type"),
                     "domain": domain,
