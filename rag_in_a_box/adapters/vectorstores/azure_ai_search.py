@@ -41,6 +41,7 @@ class AzureAISearchVectorStore:
         self._search_client = SearchClient(self.endpoint, self.index_name, cred)
 
     def ensure_index(self) -> None:
+        """Create the Azure AI Search index if it does not already exist."""
         # Vector index creation pattern matches Azure vector search quickstart :contentReference[oaicite:6]{index=6}
         fields = [
             SimpleField(name="id", type=SearchFieldDataType.String, key=True),
@@ -109,12 +110,50 @@ class AzureAISearchVectorStore:
         self._search_client.upload_documents(documents=docs)
 
     def query(self, query_vector: list[float], k: int, filters: Optional[dict] = None) -> list[SearchResult]:
+        """Run a vector query and return search results.
+
+        The optional ``filters`` argument accepts simple equality filters that map to
+        filterable fields on the Azure AI Search index. This provides callers with a
+        minimal way to scope results (for example, by ``document_id`` or
+        ``source_type``) without needing to build OData filter expressions manually.
+        """
+
         # Vector query pattern matches quickstart: VectorizedQuery + vector_queries=[...] :contentReference[oaicite:7]{index=7}
         vq = VectorizedQuery(vector=query_vector, k_nearest_neighbors=k, fields="content_vector", kind="vector")
+
+        filter_expression: Optional[str] = None
+        if filters:
+            # Build a simple ``field eq 'value'`` conjunction for provided filters.
+            parts = []
+            for key, value in filters.items():
+                if value is None:
+                    continue
+                # Strings need quotes, numbers and booleans do not.
+                if isinstance(value, str):
+                    parts.append(f"{key} eq '{value}'")
+                else:
+                    parts.append(f"{key} eq {value}")
+            if parts:
+                filter_expression = " and ".join(parts)
+
         results = self._search_client.search(
             vector_queries=[vq],
-            select=["id", "document_id", "uri", "chunk_index", "content", "tokens"],
+            select=[
+                "id",
+                "document_id",
+                "uri",
+                "chunk_index",
+                "chunk_start_char",
+                "tokens",
+                "referrer_url",
+                "source_type",
+                "mime_type",
+                "domain",
+                "content",
+                "title",
+            ],
             top=k,
+            filter=filter_expression,
         )
 
         out: list[SearchResult] = []
@@ -126,7 +165,13 @@ class AzureAISearchVectorStore:
                 text=r["content"],
                 metadata={
                     "chunk_index": r.get("chunk_index"),
+                    "chunk_start_char": r.get("chunk_start_char"),
                     "tokens": r.get("tokens"),
+                    "referrer_url": r.get("referrer_url"),
+                    "source_type": r.get("source_type"),
+                    "mime_type": r.get("mime_type"),
+                    "domain": r.get("domain"),
+                    "title": r.get("title"),
                 },
             )
             out.append(SearchResult(chunk=chunk, score=r.get("@search.score", 0.0)))
