@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import urlparse
 
 from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient
@@ -44,6 +47,14 @@ class AzureAISearchVectorStore:
             SimpleField(name="document_id", type=SearchFieldDataType.String, filterable=True),
             SimpleField(name="uri", type=SearchFieldDataType.String, filterable=True),
             SimpleField(name="chunk_index", type=SearchFieldDataType.Int32, filterable=True),
+            SimpleField(name="chunk_start_char", type=SearchFieldDataType.Int32, filterable=True),
+            SimpleField(name="referrer_url", type=SearchFieldDataType.String, filterable=True),
+            SimpleField(name="source_type", type=SearchFieldDataType.String, filterable=True),
+            SimpleField(name="mime_type", type=SearchFieldDataType.String, filterable=True),
+            SimpleField(name="domain", type=SearchFieldDataType.String, filterable=True),
+            SimpleField(name="content_hash", type=SearchFieldDataType.String, filterable=True),
+            SimpleField(name="ingested_at", type=SearchFieldDataType.DateTimeOffset, filterable=True),
+            SearchableField(name="title", type=SearchFieldDataType.String),
             SearchableField(name="content", type=SearchFieldDataType.String),
             SearchField(
                 name="content_vector",
@@ -68,12 +79,26 @@ class AzureAISearchVectorStore:
 
         docs = []
         for i, (c, v) in enumerate(zip(chunks, vectors)):
+            metadata = c.metadata or {}
+            start_char = metadata.get("chunk_start_char", metadata.get("start_char"))
+            source_type = metadata.get("source_type", metadata.get("source"))
+            domain = urlparse(c.uri).netloc.lower() if c.uri else None
+            content_hash = hashlib.sha256(c.text.encode("utf-8")).hexdigest()
+
             docs.append(
                 {
                     "id": c.id,
                     "document_id": c.document_id,
                     "uri": c.uri,
-                    "chunk_index": c.metadata.get("chunk_index", i),
+                    "chunk_index": metadata.get("chunk_index", i),
+                    "chunk_start_char": start_char,
+                    "referrer_url": metadata.get("referrer_url"),
+                    "source_type": source_type,
+                    "mime_type": metadata.get("mime_type"),
+                    "domain": domain,
+                    "content_hash": content_hash,
+                    "ingested_at": datetime.now(timezone.utc).isoformat(),
+                    "title": metadata.get("title"),
                     "content": c.text,
                     "content_vector": v,
                 }
