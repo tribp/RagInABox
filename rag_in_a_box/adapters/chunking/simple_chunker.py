@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 
 from rag_in_a_box.core.models import Chunk, Document
+from rag_in_a_box.core.token_utils import count_tokens
 
 
 class SimpleCharChunker:
@@ -42,6 +43,7 @@ class SimpleCharChunker:
                         "start_char": i,
                         "chunk_start_char": i,
                         "mime_type": doc.mime_type,
+                        "tokens": count_tokens(window),
                     },
                 )
             )

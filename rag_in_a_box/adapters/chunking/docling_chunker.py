@@ -4,6 +4,7 @@ import uuid
 from typing import Any
 
 from rag_in_a_box.core.models import Chunk, Document
+from rag_in_a_box.core.token_utils import count_tokens
 
 
 class DoclingChunker:
@@ -45,6 +46,7 @@ class DoclingChunker:
                 "mime_type": doc.mime_type,
                 "start_char": start,
                 "chunk_start_char": start,
+                "tokens": count_tokens(window),
             }
 
             chunks.append(

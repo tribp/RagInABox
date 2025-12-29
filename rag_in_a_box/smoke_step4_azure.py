@@ -7,6 +7,7 @@ from rag_in_a_box.adapters.embeddings.azure_openai import AzureOpenAIEmbedder
 from rag_in_a_box.adapters.llm.azure_openai import AzureOpenAIChatLLM
 from rag_in_a_box.adapters.vectorstores.azure_ai_search import AzureAISearchVectorStore
 from rag_in_a_box.core.models import Chunk
+from rag_in_a_box.core.token_utils import count_tokens
 from rag_in_a_box.pipelines.chat import RAGChatEngine
 
 
@@ -40,8 +41,20 @@ def main() -> None:
 
     # Index a few chunks
     chunks = [
-        Chunk(id=_id(), document_id="demo", uri="local://demo", text="Azure AI Search can be used as a vector database.", metadata={"chunk_index": 0}),
-        Chunk(id=_id(), document_id="demo", uri="local://demo", text="Gradio can host a chat UI for LLM apps.", metadata={"chunk_index": 1}),
+        Chunk(
+            id=_id(),
+            document_id="demo",
+            uri="local://demo",
+            text="Azure AI Search can be used as a vector database.",
+            metadata={"chunk_index": 0, "tokens": count_tokens("Azure AI Search can be used as a vector database.")},
+        ),
+        Chunk(
+            id=_id(),
+            document_id="demo",
+            uri="local://demo",
+            text="Gradio can host a chat UI for LLM apps.",
+            metadata={"chunk_index": 1, "tokens": count_tokens("Gradio can host a chat UI for LLM apps.")},
+        ),
     ]
     vectors = embedder.embed_texts([c.text for c in chunks])
     store.upsert(chunks, vectors)

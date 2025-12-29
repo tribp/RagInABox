@@ -48,6 +48,7 @@ class AzureAISearchVectorStore:
             SimpleField(name="uri", type=SearchFieldDataType.String, filterable=True),
             SimpleField(name="chunk_index", type=SearchFieldDataType.Int32, filterable=True),
             SimpleField(name="chunk_start_char", type=SearchFieldDataType.Int32, filterable=True),
+            SimpleField(name="tokens", type=SearchFieldDataType.Int32, filterable=True),
             SimpleField(name="referrer_url", type=SearchFieldDataType.String, filterable=True),
             SimpleField(name="source_type", type=SearchFieldDataType.String, filterable=True),
             SimpleField(name="mime_type", type=SearchFieldDataType.String, filterable=True),
@@ -102,6 +103,7 @@ class AzureAISearchVectorStore:
                     "title": metadata.get("title"),
                     "content": c.text,
                     "content_vector": v,
+                    "tokens": metadata.get("tokens"),
                 }
             )
         self._search_client.upload_documents(documents=docs)
@@ -111,7 +113,7 @@ class AzureAISearchVectorStore:
         vq = VectorizedQuery(vector=query_vector, k_nearest_neighbors=k, fields="content_vector", kind="vector")
         results = self._search_client.search(
             vector_queries=[vq],
-            select=["id", "document_id", "uri", "chunk_index", "content"],
+            select=["id", "document_id", "uri", "chunk_index", "content", "tokens"],
             top=k,
         )
 
@@ -122,7 +124,10 @@ class AzureAISearchVectorStore:
                 document_id=r["document_id"],
                 uri=r["uri"],
                 text=r["content"],
-                metadata={"chunk_index": r.get("chunk_index")},
+                metadata={
+                    "chunk_index": r.get("chunk_index"),
+                    "tokens": r.get("tokens"),
+                },
             )
             out.append(SearchResult(chunk=chunk, score=r.get("@search.score", 0.0)))
         return out
