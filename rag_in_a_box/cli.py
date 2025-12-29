@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import argparse
 
-from rag_in_a_box.config.settings import Settings
-from rag_in_a_box.adapters.chunking.simple_chunker import SimpleCharChunker
 from rag_in_a_box.adapters.chunking.docling_chunker import DoclingChunker
+from rag_in_a_box.adapters.chunking.simple_chunker import SimpleCharChunker
 from rag_in_a_box.adapters.extractors.registry import ExtractorRegistry
 from rag_in_a_box.adapters.extractors.text_extractor import TextExtractor
 from rag_in_a_box.adapters.extractors.html_extractor import HtmlExtractor
@@ -13,15 +12,21 @@ from rag_in_a_box.adapters.extractors.docling_extractor import DoclingExtractor
 from rag_in_a_box.adapters.sources.local_folder import LocalFolderSource
 from rag_in_a_box.adapters.embeddings.azure_openai import AzureOpenAIEmbedder
 from rag_in_a_box.adapters.vectorstores.azure_ai_search import AzureAISearchVectorStore
+from rag_in_a_box.config.settings import Settings
 from rag_in_a_box.pipelines.ingestion import IngestionPipeline
 from rag_in_a_box.adapters.sources.website_crawler import WebsiteCrawlerSource
 
 
 
 def _build_chunker(args, settings: Settings):
-    if getattr(args, "use_docling_chunker", False):
+    chunker_choice = (getattr(args, "chunker", None) or "doclingchunker").lower()
+    if chunker_choice == "doclingchunker":
         return DoclingChunker()
-    return SimpleCharChunker(chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap)
+    if chunker_choice == "simplechunker":
+        return SimpleCharChunker(
+            chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap
+        )
+    raise SystemExit(f"Unknown chunker: {chunker_choice}")
 
 
 def cmd_ingest_local(args) -> None:
@@ -135,10 +140,13 @@ def main() -> None:
 
     for p in (ingest_local_parser, ingest_web_parser):
         p.add_argument(
-            "--docling-chunker",
-            dest="use_docling_chunker",
-            action="store_true",
-            help="Use DoclingChunker instead of the default character chunker",
+            "--chunker",
+            choices=["doclingchunker", "simplechunker"],
+            default="doclingchunker",
+            help=(
+                "Chunker implementation to use; defaults to doclingchunker. "
+                "Current options: doclingchunker, simplechunker"
+            ),
         )
 
     args = parser.parse_args()
