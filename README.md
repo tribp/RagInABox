@@ -215,6 +215,9 @@ AZURE_OPENAI_API_KEY=YOUR_KEY
 AZURE_OPENAI_API_VERSION=2024-xx-xx
 AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-5-2-deployment
 AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-small-deployment
+# Optional throughput guards to avoid 429 errors
+EMBEDDING_REQUESTS_PER_MINUTE=60
+EMBEDDING_MAX_CONCURRENCY=5
 
 # -------------------
 # Azure AI Search
@@ -237,6 +240,8 @@ CHUNK_SIZE=800
 CHUNK_OVERLAP=120
 TOP_K=5
 ```
+
+The embedding limits above are conservative, provider-agnostic defaults that keep ingestion well below typical Azure OpenAI quotas. If your resource allows higher throughput, you can increase `EMBEDDING_REQUESTS_PER_MINUTE` and `EMBEDDING_MAX_CONCURRENCY` gradually while monitoring for 429 responses.
 
 Create **`.gitignore`**:
 
