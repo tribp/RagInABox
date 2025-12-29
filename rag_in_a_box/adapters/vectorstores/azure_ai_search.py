@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import urlparse
 from urllib.parse import urlparse
 
 from azure.core.credentials import AzureKeyCredential
@@ -53,23 +56,13 @@ class AzureAISearchVectorStore:
             SimpleField(name="uri", type=SearchFieldDataType.String, filterable=True),
             SimpleField(name="referrer_url", type=SearchFieldDataType.String, filterable=True),
             SimpleField(name="chunk_index", type=SearchFieldDataType.Int32, filterable=True),
-
-            # Added metadata for filtering / portal exploration
-            SimpleField(name="source_type", type=SearchFieldDataType.String, filterable=True, facetable=True),
-            SimpleField(name="mime_type", type=SearchFieldDataType.String, filterable=True, facetable=True),
-            SimpleField(name="domain", type=SearchFieldDataType.String, filterable=True, facetable=True),
-            SimpleField(
-                name="ingested_at",
-                type=SearchFieldDataType.DateTimeOffset,
-                filterable=True,
-                sortable=True,
-            ),
-            SimpleField(name="content_hash", type=SearchFieldDataType.String, filterable=True),
-
-            # Citation traceability (optional, but handy)
             SimpleField(name="chunk_start_char", type=SearchFieldDataType.Int32, filterable=True),
-
-            # Text for keyword search
+            SimpleField(name="referrer_url", type=SearchFieldDataType.String, filterable=True),
+            SimpleField(name="source_type", type=SearchFieldDataType.String, filterable=True),
+            SimpleField(name="mime_type", type=SearchFieldDataType.String, filterable=True),
+            SimpleField(name="domain", type=SearchFieldDataType.String, filterable=True),
+            SimpleField(name="content_hash", type=SearchFieldDataType.String, filterable=True),
+            SimpleField(name="ingested_at", type=SearchFieldDataType.DateTimeOffset, filterable=True),
             SearchableField(name="title", type=SearchFieldDataType.String),
             SearchableField(name="content", type=SearchFieldDataType.String),
 
@@ -97,35 +90,26 @@ class AzureAISearchVectorStore:
 
         docs = []
         for i, (c, v) in enumerate(zip(chunks, vectors)):
-            md = c.metadata or {}
-
-            # Best-effort defaults (won’t break if metadata missing)
-            source_type = md.get("source_type", "")
-            mime_type = md.get("mime_type", "")
-            title = md.get("title", "")
-            ingested_at = md.get("ingested_at")  # should be ISO string or datetime; we'll set later in pipeline
-            content_hash = md.get("content_hash", "")
-            chunk_start_char = md.get("start_char")
-
-            # Derive domain if not provided
-            domain = md.get("domain") or _safe_domain(c.uri)
+            metadata = c.metadata or {}
+            start_char = metadata.get("chunk_start_char", metadata.get("start_char"))
+            source_type = metadata.get("source_type", metadata.get("source"))
+            domain = urlparse(c.uri).netloc.lower() if c.uri else None
+            content_hash = hashlib.sha256(c.text.encode("utf-8")).hexdigest()
 
             docs.append(
                 {
                     "id": c.id,
                     "document_id": c.document_id,
                     "uri": c.uri,
-                    "referrer_url": md.get("referrer_url", ""),
-                    "chunk_index": md.get("chunk_index", i),
-
+                    "chunk_index": metadata.get("chunk_index", i),
+                    "chunk_start_char": start_char,
+                    "referrer_url": metadata.get("referrer_url"),
                     "source_type": source_type,
-                    "mime_type": mime_type,
+                    "mime_type": metadata.get("mime_type"),
                     "domain": domain,
-                    "title": title,
-                    "ingested_at": ingested_at,
                     "content_hash": content_hash,
-                    "chunk_start_char": chunk_start_char,
-
+                    "ingested_at": datetime.now(timezone.utc).isoformat(),
+                    "title": metadata.get("title"),
                     "content": c.text,
                     "content_vector": v,
                 }
