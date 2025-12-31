@@ -5,56 +5,50 @@ RagInABox aims to be a configurable, end-to-end RAG starter kit. It should be ab
 
 ### A. Core (framework-agnostic)
 
-- Interfaces (Protocols/ABCs) for each stage
-
-- Plain data models (Document, Chunk, etc.)
-
-- Orchestrators that run the ingestion/indexing pipeline and the chat pipeline
+- Data models for raw sources, extracted documents (including Docling-aware hybrids), chunks, search hits, and chat messages keep the pipeline strongly typed without framework coupling.【F:rag_in_a_box/core/models.py†L11-L74】
+- Protocol-based interfaces define the contract for sources, extractors, chunkers, embedders, vector stores, and LLMs, letting adapters be swapped without touching orchestration logic.【F:rag_in_a_box/core/interfaces.py†L8-L46】
+- Orchestrators implement ingestion and chat flows. Ingestion batches chunk embeddings with metadata enrichment before persistence, while chat embeds the query, retrieves context, and crafts prompts for the LLM.【F:rag_in_a_box/pipelines/ingestion.py†L14-L89】【F:rag_in_a_box/pipelines/chat.py†L7-L39】
 
 ### B. Adapters (implementations)
 
-- Local folder source, website crawler source
+- Sources: local folder walker for files and a bounded website crawler that normalizes links, respects allowed domains/exclusions, and yields HTML/PDF payloads with referrer metadata.【F:rag_in_a_box/adapters/sources/local_folder.py†L11-L35】【F:rag_in_a_box/adapters/sources/website_crawler.py†L1-L104】
+- Extractors: text/HTML/PDF handlers plus a Docling-powered extractor that preserves structured payloads for downstream chunking.【F:rag_in_a_box/adapters/extractors/docling_extractor.py†L11-L87】
+- Chunkers: Docling hybrid chunker aligned to embedding tokenization, and a fallback character chunker with overlap and token counts.【F:rag_in_a_box/adapters/chunking/docling_chunker.py†L7-L126】【F:rag_in_a_box/adapters/chunking/simple_chunker.py†L9-L45】
+- Embeddings: Azure OpenAI embedder with concurrency and rate limiting; it can probe embedding dimensions for index creation.【F:rag_in_a_box/adapters/embeddings/azure_openai.py†L12-L54】
+- Vector store: Azure AI Search client that ensures index schema (including vector field + metadata) and supports filtered vector queries; retries uploads on transient failures.【F:rag_in_a_box/adapters/vectorstores/azure_ai_search.py†L22-L120】【F:rag_in_a_box/adapters/vectorstores/azure_ai_search.py†L129-L183】
+- LLM: Azure OpenAI chat completion wrapper that consumes the same ChatMessage model as the orchestrator.【F:rag_in_a_box/adapters/llm/azure_openai.py†L1-L23】
 
-- PDF/HTML/text extractors
+### C. App (composition + UI/CLI)
 
-- Chunkers
-
-- Embedding providers (Azure OpenAI by default)
-
-- Vector stores (Azure AI Search by default)
-
-- LLM providers (Azure OpenAI GPT-5.2 by default)
-
-### C. App (composition + UI)
-
-- Config loader from .env
-
-- Factory to assemble the chosen adapters
-
-- Gradio frontend calling the chat orchestrator
-
-- CLI commands to run ingestion and serve UI
-
+- Typed settings loader centralizes environment-driven configuration for Azure endpoints, ingestion defaults, crawling bounds, and retrieval parameters.【F:rag_in_a_box/config/settings.py†L10-L90】
+- CLI wiring builds the concrete adapters (embedder, vector store, extractors, chunker) and exposes commands to ingest local files or crawl websites using the configured settings.【F:rag_in_a_box/cli.py†L1-L89】
+- (UI placeholder) The Gradio UI is planned; current entrypoints focus on ingestion and chat orchestration.
 # Main Components ad Interfaces
 ### Data models (simple, shared everywhere)
 
-- Document
-
-    - id: str
+- SourceItem
 
     - uri: str (file path or URL)
 
-    - content: str
+    - data: bytes | str (raw payload)
 
-    - mime_type: str
+    - mime_type: str (used for extractor routing)
 
     - metadata: dict
+
+- Document / HybridDocument
+
+    - Document: id, uri, content, mime_type, metadata
+
+    - HybridDocument adds optional Docling document storage and helpers to expose plain text or native Docling chunks for advanced chunking.【F:rag_in_a_box/core/models.py†L21-L60】
 
 - Chunk
 
     - id: str
 
     - document_id: str
+
+    - uri: str
 
     - text: str
 
@@ -66,6 +60,12 @@ RagInABox aims to be a configurable, end-to-end RAG starter kit. It should be ab
 
     - score: float
 
+- ChatMessage / ChatResponse
+
+    - ChatMessage: role, content
+
+    - ChatResponse: answer, sources (list[SearchResult])
+
 ### “Ports” (interfaces you code against)
 
 These are the key to composability:
@@ -74,9 +74,9 @@ These are the key to composability:
 
     - iter_items() -> Iterable[SourceItem]
 
-    - SourceItem could be {uri, bytes|text, mime_type, metadata}
-
 - Extractor
+
+    - can_handle(mime_type: str) -> bool
 
     - extract(item: SourceItem) -> Document
 
@@ -92,40 +92,31 @@ These are the key to composability:
 
     - upsert(chunks: list[Chunk], vectors: list[list[float]]) -> None
 
-    - query(query_vector: list[float], k: int, filters: dict|None) -> list[SearchResult]
+    - query(query_vector: list[float], k: int, filters: dict | None = None) -> list[SearchResult]
 
 - LLM
 
-    - chat(messages: list[dict], **kwargs) -> str (keep it minimal)
-
-- Reranker (optional later)
-
-    - rerank(query: str, results: list[SearchResult]) -> list[SearchResult]
+    - chat(messages: list[ChatMessage], **kwargs) -> str
 
 ### Orchestrators (the “brains”)
 
 - IngestionPipeline
 
-    - takes source(s) → extractor(s) → chunker → embedder → vectorstore
+    - Drives source → extractor registry → chunker → embedder → vector store, batching embeddings and enriching chunk metadata (hash, timestamps) before upsert.【F:rag_in_a_box/pipelines/ingestion.py†L14-L80】
 
 - RAGChatEngine
 
-    - takes user message → embed query → vectorstore retrieve → build prompt → LLM answer
-
-    - optionally returns citations (chunk metadata)
+    - Embeds the question, retrieves top-k chunks, builds a context-prefixed prompt, and calls the LLM; returns the answer with citations.【F:rag_in_a_box/pipelines/chat.py†L7-L37】
 
 ### Composition
 
 - Settings
 
-    - loads .env and provides typed config (endpoints, keys, model names, index name, etc.)
+    - Loads .env-backed configuration for Azure resources, chunking defaults, crawler bounds, and retrieval parameters.【F:rag_in_a_box/config/settings.py†L10-L90】
 
-- AppFactory
+- CLI
 
-    - build_ingestion_pipeline(settings) -> IngestionPipeline
-
-    - build_chat_engine(settings) -> RAGChatEngine
-
+    - Constructs concrete adapters (Docling or simple chunkers, Azure AI Search index, Azure OpenAI embedder/LLM) and exposes `ingest-local` / `ingest-web` commands.【F:rag_in_a_box/cli.py†L1-L89】
 <BR>
 ---
 <BR><BR>
