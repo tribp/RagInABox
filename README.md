@@ -22,7 +22,7 @@ RagInABox aims to be a configurable, end-to-end RAG starter kit. It should be ab
 
 - Typed settings loader centralizes environment-driven configuration for Azure endpoints, ingestion defaults, crawling bounds, and retrieval parameters.【F:rag_in_a_box/config/settings.py†L10-L90】
 - CLI wiring builds the concrete adapters (embedder, vector store, extractors, chunker) and exposes commands to ingest local files or crawl websites using the configured settings.【F:rag_in_a_box/cli.py†L1-L89】
-- (UI placeholder) The Gradio UI is planned; current entrypoints focus on ingestion and chat orchestration.
+- Gradio chat client wires Azure OpenAI + Azure AI Search into a chat interface with inline source listings; start it with `python -m rag_in_a_box.app.gradio_client` once your `.env` is configured and content is indexed.【F:rag_in_a_box/app/gradio_client.py†L1-L92】
 # Main Components ad Interfaces
 ### Data models (simple, shared everywhere)
 
