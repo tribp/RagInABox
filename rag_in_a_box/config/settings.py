@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     azure_search_endpoint: str = Field(..., alias="AZURE_SEARCH_ENDPOINT")
     azure_search_api_key: str = Field(..., alias="AZURE_SEARCH_API_KEY")
     azure_search_index: str = Field("raginabox", alias="AZURE_SEARCH_INDEX")
+    azure_search_batch_size: int | None = Field(
+        16, alias="AZURE_SEARCH_BATCH_SIZE")
 
     # -------------------
     # Ingestion defaults
@@ -105,6 +107,7 @@ class Settings(BaseSettings):
     # Chunking + retrieval
     # -------------------
     chunk_size: int = Field(800, alias="CHUNK_SIZE")
+    chunk_max_tokens: int = Field(800, alias="CHUNK_MAX_TOKENS")
     chunk_overlap: int = Field(120, alias="CHUNK_OVERLAP")
     top_k: int = Field(5, alias="TOP_K")
     
@@ -116,6 +119,7 @@ if __name__ == "__main__":
     print(f"Embedding deployment:  {s.azure_openai_embedding_deployment}")
     print(f"Search endpoint:       {s.azure_search_endpoint}")
     print(f"Search index:          {s.azure_search_index}")
+    print(f"Search batch size:     {s.azure_search_batch_size}")
     print(f"Ingest local path:     {s.ingest_local_path}")
     print(f"Start URLs:            {s.ingest_start_urls}")
     print(f"Allowed domains:       {s.ingest_allowed_domains}")
@@ -126,4 +130,5 @@ if __name__ == "__main__":
     print(f"Crawl user agent:      {s.crawl_user_agent}")
     print(f"Crawl include PDFs:    {s.crawl_include_pdfs}") 
     print(f"Chunk size/overlap:    {s.chunk_size}/{s.chunk_overlap}")
+    print(f"Chunk max tokens:      {s.chunk_max_tokens}")
     print(f"Top K:                 {s.top_k}")

@@ -117,9 +117,6 @@ def main() -> None:
         )
 
     args = parser.parse_args()
-
-    #test
-    args.cmd = "ingest-web"
     
     if args.cmd == "ingest-local":
         cmd_ingest_local(args)

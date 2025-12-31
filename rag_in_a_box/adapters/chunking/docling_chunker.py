@@ -1,52 +1,138 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Iterable, Optional
 
 from rag_in_a_box.core.models import Chunk, Document
-from rag_in_a_box.core.token_utils import count_tokens
 
 
 class DoclingChunker:
-    """Chunker that uses Docling structural cues and guards against oversized inputs."""
+    """
+    Chunker that uses Docling's HybridChunker + OpenAITokenizer (tiktoken),
+    aligned to an OpenAI embeddings model (default: text-embedding-3-small).
 
-    def __init__(self, max_chunk_chars: int = 8000, chunk_overlap: int = 200):
-        if chunk_overlap >= max_chunk_chars:
-            raise ValueError("chunk_overlap must be smaller than max_chunk_chars")
-        self.max_chunk_chars = max_chunk_chars
-        self.chunk_overlap = chunk_overlap
+    - If a DoclingDocument is already present in doc.metadata (recommended),
+      we chunk it directly.
+    - Otherwise we try to build a DoclingDocument from doc.uri (file/URL) or
+      from doc.content via DocumentConverter.convert_string (MD/HTML).
+    """
 
-    def _append_chunks(
+    def __init__(
         self,
         *,
-        doc: Document,
-        text: str,
-        base_metadata: dict[str, Any],
-        chunks: list[Chunk],
-        chunk_index: int,
-    ) -> int:
-        """Split text into windowed chunks to stay within model limits."""
+        embed_model: str = "text-embedding-3-small",
+        max_tokens: int = 8192,
+        merge_peers: bool = True,
+        use_contextualized_text: bool = True,
+        # Where you stash a DoclingDocument inside Document.metadata:
+        docling_document_keys: Iterable[str] = ("dl_doc", "docling_document", "docling_doc"),
+    ):
+        self.embed_model = embed_model
+        self.max_tokens = max_tokens
+        self.merge_peers = merge_peers
+        self.use_contextualized_text = use_contextualized_text
+        self.docling_document_keys = tuple(docling_document_keys)
 
-        step = self.max_chunk_chars - self.chunk_overlap
-        start = 0
+        # ---- Tokenizer (tiktoken) + Docling OpenAITokenizer wrapper ----
+        import tiktoken
+        from docling_core.transforms.chunker.tokenizer.openai import OpenAITokenizer  # requires docling-core[chunking-openai]
 
-        while start < len(text):
-            window = text[start : start + self.max_chunk_chars]
-            cid = str(
-                uuid.uuid5(
-                    uuid.NAMESPACE_URL,
-                    f"{doc.id}:{base_metadata.get('section_id')}:"
-                    f"{base_metadata.get('paragraph_id')}:{chunk_index}:{start}",
-                )
-            )
-            metadata = {
-                **doc.metadata,
-                **base_metadata,
-                "chunk_index": chunk_index,
+        self._encoding = tiktoken.encoding_for_model(embed_model)
+        self._tokenizer = OpenAITokenizer(tokenizer=self._encoding, max_tokens=max_tokens)
+
+        # ---- HybridChunker ----
+        try:
+            # Most common when you install `docling`
+            from docling.chunking import HybridChunker
+        except Exception:
+            # Fallback if you're using docling-core directly
+            from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
+
+        self._chunker = HybridChunker(tokenizer=self._tokenizer, merge_peers=merge_peers)
+
+    def _count_tokens(self, text: str) -> int:
+        # Ensure token counting matches the embedding model tokenizer
+        return len(self._encoding.encode(text or ""))
+
+    def _get_docling_document_from_metadata(self, doc: Document) -> Optional[Any]:
+        md = doc.metadata if isinstance(doc.metadata, dict) else None
+        if not md:
+            return None
+        for k in self.docling_document_keys:
+            if k in md and md[k] is not None:
+                return md[k]
+        return None
+
+    def _to_docling_document(self, doc: Document) -> Optional[Any]:
+        """
+        Best-effort conversion to a DoclingDocument:
+        1) use an existing DoclingDocument from metadata
+        2) else convert from doc.uri (file path / URL)
+        3) else convert from doc.content as Markdown (or HTML if mime suggests)
+        """
+        dl_doc = self._get_docling_document_from_metadata(doc)
+        if dl_doc is not None:
+            return dl_doc
+
+        # If you can re-convert from source (path/URL), this is the most faithful.
+        if getattr(doc, "uri", None):
+            try:
+                from docling.document_converter import DocumentConverter
+                return DocumentConverter().convert(source=doc.uri).document
+            except Exception:
+                pass
+
+        # Otherwise, try from in-memory content (Docling supports MD/HTML strings).
+        if getattr(doc, "content", None):
+            try:
+                from docling.document_converter import DocumentConverter
+                from docling.datamodel.base_models import InputFormat
+
+                fmt = InputFormat.HTML if (doc.mime_type or "").lower() in ("text/html", "application/xhtml+xml") else InputFormat.MD
+                name = (doc.uri or doc.id or "document")
+                return DocumentConverter().convert_string(content=doc.content, format=fmt, name=name).document
+            except Exception:
+                return None
+
+        return None
+
+    def chunk(self, doc: Document) -> list[Chunk]:
+        dl_doc = self._to_docling_document(doc)
+
+        # If we cannot obtain a DoclingDocument, return no chunks (or choose your own fallback).
+        if dl_doc is None:
+            return []
+
+        chunks: list[Chunk] = []
+
+        for i, dl_chunk in enumerate(self._chunker.chunk(dl_doc=dl_doc)):
+            # Docling recommends embedding the context-enriched representation.
+            # (Headings/captions are prepended where relevant.)
+            if self.use_contextualized_text:
+                text = self._chunker.contextualize(chunk=dl_chunk)
+            else:
+                text = getattr(dl_chunk, "text", "") or ""
+
+            token_count = self._count_tokens(text)
+
+            # Deterministic chunk id
+            cid = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{doc.id}:{i}:{text}"))
+
+            # Best-effort extraction of docling chunk metadata (field names differ across versions)
+            dl_meta = getattr(dl_chunk, "meta", None)
+            if dl_meta is None:
+                dl_meta = getattr(dl_chunk, "metadata", None)
+
+            metadata: dict[str, Any] = {
+                **(doc.metadata or {}),
+                "chunk_index": i,
                 "mime_type": doc.mime_type,
-                "start_char": start,
-                "chunk_start_char": start,
-                "tokens": count_tokens(window),
+                "tokens": token_count,
+                "embed_model": self.embed_model,
+                "docling_chunk_meta": dl_meta,
+                # keep both forms if you want to debug retrieval quality:
+                "docling_raw_text": getattr(dl_chunk, "text", None),
+                "docling_contextualized": self.use_contextualized_text,
             }
 
             chunks.append(
@@ -54,60 +140,9 @@ class DoclingChunker:
                     id=cid,
                     document_id=doc.id,
                     uri=doc.uri,
-                    text=window,
+                    text=text,
                     metadata=metadata,
                 )
             )
-
-            start += step
-            chunk_index += 1
-
-        return chunk_index
-
-    def chunk(self, doc: Document) -> list[Chunk]:
-        docling = doc.metadata.get("docling") if isinstance(doc.metadata, dict) else None
-        sections: list[dict[str, Any]] = []
-        if docling and isinstance(docling, dict):
-            sections = docling.get("sections") or []
-
-        chunks: list[Chunk] = []
-        chunk_index = 0
-
-        if not sections:
-            if doc.content:
-                chunk_index = self._append_chunks(
-                    doc=doc,
-                    text=doc.content,
-                    base_metadata={},
-                    chunks=chunks,
-                    chunk_index=chunk_index,
-                )
-            return chunks
-
-        for section in sections:
-            section_id = section.get("id")
-            section_title = section.get("title")
-            for para in section.get("paragraphs", []):
-                para_text = str(para.get("text", "")).strip()
-                if not para_text:
-                    continue
-
-                para_id = para.get("id")
-                page_number = para.get("page")
-                metadata = {
-                    "section_id": section_id,
-                    "section_title": section_title,
-                    "paragraph_id": para_id,
-                }
-                if page_number is not None:
-                    metadata["page_number"] = page_number
-
-                chunk_index = self._append_chunks(
-                    doc=doc,
-                    text=para_text,
-                    base_metadata=metadata,
-                    chunks=chunks,
-                    chunk_index=chunk_index,
-                )
 
         return chunks

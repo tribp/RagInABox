@@ -31,7 +31,11 @@ def _normalize_url(base: str, href: str) -> Optional[str]:
 
 
 def _domain(url: str) -> str:
-    return urlparse(url).netloc.lower()
+    domain = urlparse(url).netloc.lower()
+    # Remove www. prefix to normalize domains
+    if domain.startswith("www."):
+        domain = domain[4:]
+    return domain
 
 
 def _looks_like_pdf(url: str) -> bool:

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
+from docling_core.types import DoclingDocument
+
 
 Metadata = Dict[str, Any]
 
@@ -32,6 +34,35 @@ class Document:
     mime_type: str = "text/plain"
     metadata: Metadata = field(default_factory=dict)
 
+@dataclass
+class HybridDocument:
+    # Core fields always present
+    id: str
+    uri: str
+    mime_type: str | None = None
+    
+    # Either traditional content or Docling document
+    content: str | None = None
+    _docling_doc: DoclingDocument | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    
+    @property
+    def is_docling(self) -> bool:
+        return self._docling_doc is not None
+    
+    @property
+    def text(self) -> str:
+        if self._docling_doc:
+            return self._docling_doc.export_to_text()
+        return self.content or ""
+    
+    def get_chunks_with_context(self, **kwargs):
+        """Use native Docling chunking when available."""
+        if self._docling_doc:
+            from docling_core.transforms.chunker import HierarchicalChunker
+            chunker = HierarchicalChunker(include_context=True, **kwargs)
+            return chunker.chunk(self._docling_doc)
+        return None
 
 @dataclass(frozen=True)
 class Chunk:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -34,7 +36,6 @@ def _safe_domain(uri: str) -> str:
     except Exception:
         return ""
 
-
 @dataclass
 class AzureAISearchVectorStore:
     endpoint: str
@@ -45,7 +46,7 @@ class AzureAISearchVectorStore:
     def __post_init__(self) -> None:
         cred = AzureKeyCredential(self.api_key)
         self._index_client = SearchIndexClient(self.endpoint, cred)
-        self._search_client = SearchClient(self.endpoint, self.index_name, cred)
+        self._search_client = SearchClient(self.endpoint, self.index_name, cred, logging_enable=True) # Enable logging for debugging
 
     def ensure_index(self) -> None:
         """Create the Azure AI Search index if it does not already exist."""
@@ -118,7 +119,17 @@ class AzureAISearchVectorStore:
                 }
             )
 
-        self._search_client.upload_documents(documents=docs)
+        # To prevent errors due to transport-level disconnect from AI Search service
+        
+        for attempt in range(5):
+            try:
+                self._search_client.upload_documents(documents=docs)
+                break
+            except Exception as e:
+                print(f"Upsert attempt {attempt + 1} failed: {e}")
+                if attempt == 4:
+                    raise
+                time.sleep(2 ** attempt)
 
     def query(self, query_vector: list[float], k: int, filters: Optional[dict] = None) -> list[SearchResult]:
         """Run a vector query and return search results.

@@ -3,11 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+import logging
 
 from rag_in_a_box.core.interfaces import Chunker, ContentSource, Embedder, VectorStore
 from rag_in_a_box.core.models import Chunk
 from rag_in_a_box.adapters.extractors.registry import ExtractorRegistry
 
+# Add logger at module level
+logger = logging.getLogger(__name__)
 
 @dataclass
 class IngestionStats:
@@ -42,6 +45,7 @@ class IngestionPipeline:
         # One timestamp for the whole ingestion run (UTC)
         run_ingested_at = datetime.now(timezone.utc).isoformat()
 
+        # take everything we’ve accumulated so far, process it, send it to the database
         def flush() -> None:
             nonlocal pending_chunks, stats
             if not pending_chunks:
@@ -56,8 +60,9 @@ class IngestionPipeline:
 
             try:
                 doc = self.extractor_registry.extract(item)
-            except Exception:
-                # keep going; later we’ll add logging
+            except Exception as e:
+                logger.warning(f"Failed to extract from {item.uri}: {e}", exc_info=True)
+                print(f"⚠️  Extraction failed for {item.uri}: {e}")
                 continue
 
             stats.docs_extracted += 1

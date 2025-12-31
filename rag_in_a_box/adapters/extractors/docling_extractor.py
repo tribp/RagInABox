@@ -4,8 +4,10 @@ import hashlib
 from dataclasses import dataclass, field
 from typing import Any
 
-from rag_in_a_box.core.models import Document, SourceItem
+from rag_in_a_box.core.models import Document, HybridDocument, SourceItem
 
+from io import BytesIO
+from docling.datamodel.base_models import DocumentStream
 
 @dataclass
 class DoclingExtractor:
@@ -47,27 +49,30 @@ class DoclingExtractor:
         if not isinstance(item.data, bytes):
             raise TypeError("DoclingExtractor expects bytes data")
 
+        buf = BytesIO(item.data)
+        ds = DocumentStream(name=item.uri, stream=buf)
+        
         converter = self._get_converter()
-        if hasattr(converter, "convert_bytes"):
-            conversion = converter.convert_bytes(item.data, mime_type=item.mime_type)
-        elif hasattr(converter, "convert"):
-            conversion = converter.convert(item.data)
-        else:  # pragma: no cover - defensive
-            raise AttributeError("Converter does not support conversion methods")
-
-        docling_payload = self._serialize_docling_result(conversion)
-        text_content = self._render_text(conversion, docling_payload)
-
-        doc_id = hashlib.sha256(item.uri.encode("utf-8")).hexdigest()
-        metadata = {**item.metadata, "docling": docling_payload}
-
-        return Document(
-            id=doc_id,
-            uri=item.uri,
-            content=text_content,
-            mime_type=item.mime_type,
-            metadata=metadata,
-        )
+        conversion = converter.convert(ds)
+        
+        # Store native Docling document
+        docling_doc = getattr(conversion, 'document', None)
+        
+        if docling_doc:
+            # Use hybrid approach - store both native doc and serialized data
+            text_content = docling_doc.export_to_markdown().strip()
+            docling_payload = self._serialize_docling_result(conversion)
+            
+            doc_id = hashlib.sha256(item.uri.encode("utf-8")).hexdigest()
+            
+            return HybridDocument(
+                id=doc_id,
+                uri=item.uri,
+                content=text_content,
+                _docling_doc=docling_doc,  # Native document for advanced features
+                mime_type=item.mime_type,
+                metadata={**item.metadata, "docling": docling_payload},
+            )
 
     def _serialize_docling_result(self, conversion: Any) -> dict[str, Any]:
         payload: dict[str, Any] = {

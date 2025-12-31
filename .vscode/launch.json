@@ -1,0 +1,29 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug CLI - ingest-web",
+            "type": "python",
+            "request": "launch",
+            "module": "rag_in_a_box.cli",
+            "args": ["ingest-web"],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        },
+        {
+            "name": "Debug CLI - ingest-local",
+            "type": "python",
+            "request": "launch",
+            "module": "rag_in_a_box.cli",
+            "args": ["ingest-local", "--chunker", "simplechunker"],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
+        }
+    ]
+}
