@@ -24,6 +24,17 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
             }
+        },
+        {
+            "name": "Debug Gradio App",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/rag_in_a_box/app/gradio_app.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
         }
     ]
 }

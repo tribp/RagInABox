@@ -12,6 +12,13 @@ from rag_in_a_box.config.settings import Settings
 from rag_in_a_box.core.models import ChatResponse, SearchResult
 from rag_in_a_box.pipelines.chat import RAGChatEngine
 
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+logging.debug("debug message")
+logging.info("info message")
+
+
 
 def _vector_dimension(embedder: AzureOpenAIEmbedder) -> int:
     """Best-effort way to determine embedding dimensionality for index creation."""
@@ -107,7 +114,7 @@ def create_interface(settings: Settings | None = None) -> gr.ChatInterface:
 
 def main() -> None:
     iface = create_interface()
-    iface.launch(server_name="0.0.0.0")
+    iface.launch(server_name="0.0.0.0", show_error=True)
 
 
 if __name__ == "__main__":
