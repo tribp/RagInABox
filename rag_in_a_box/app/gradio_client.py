@@ -86,7 +86,11 @@ def create_interface(settings: Settings | None = None) -> gr.ChatInterface:
     engine = _build_engine(settings)
 
     def _answer(message: str, history: list[tuple[str, str]]):
-        response: ChatResponse = engine.answer(message)
+        try:
+            response: ChatResponse = engine.answer(message)
+        except Exception as exc:  # noqa: BLE001 - surfacing error to user
+            return f"❌ Error answering question: {exc}", ""
+
         return response.answer, _format_sources(response.sources)
 
     return gr.ChatInterface(
