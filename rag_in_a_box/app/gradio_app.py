@@ -108,7 +108,6 @@ def create_interface(settings: Settings | None = None) -> gr.ChatInterface:
             "Chat with your indexed content. The assistant uses Azure OpenAI for generation "
             "and Azure AI Search for retrieval."
         ),
-        stop_btn=True,
     )
 
 
